@@ -1,0 +1,7 @@
+lifter
+
+**/.[0-9]*
+.vscode/*
+**/.gdb_history
+**/peda-session*
+**/*.pyc
