@@ -36,6 +36,10 @@ typedef enum vex_tag_ity {
 	Ity_I64,
 } vex_tag_ity;
 
+// TODO:
+// typedef enum vex_tag_iop 
+typedef std::string vex_tag_iop;
+
 typedef struct vex_expr {
 	vex_tag_iex tag = Iex_Invalid;
 	int con = 0;
@@ -46,7 +50,7 @@ typedef struct vex_expr {
 typedef struct vex_data {
 	vex_tag_iex tag = Iex_Invalid;
 	vex_tag_ity ty = Ity_Invalid;
-	std::string op = "Iop_Invalid";
+	vex_tag_iop op = "Iop_Invalid";
 	int con = 0;
 	int tmp = 0;
 	int offset = 0;
@@ -58,8 +62,13 @@ typedef struct vex_insn {
 	int offset = 0;
 	vex_data data;
 	std::string full = "";
+	int tmp = 0;
 	int addr = 0;
 	int len = 0;
+	std::string jumpkind;
+	vex_expr guard;
+	int offsIP;
+	int dst;
 } vex_insn;
 
 typedef std::vector<struct vex_insn> vex_insns;
@@ -134,20 +143,29 @@ std::string vex_tag_enum_to_str(vex_tag_ity tag)
 	return "Ity_Invalid";
 }
 
+void print_vex_expr(vex_expr expr, const char* prefix)
+{
+	if (expr.tag == Iex_Invalid) return;
+	printf("\t%s.tag = %s\n", prefix, vex_tag_enum_to_str(expr.tag).c_str());
+	printf("\t%s.con = 0x%x\n", prefix, expr.con);
+	printf("\t%s.tmp = %d\n", prefix, expr.tmp);
+	printf("\t%s.offset = 0x%x\n", prefix, expr.offset);
+}
+
 void print_vex_insn_data(vex_data data, const char* prefix)
 {
-	if (data.tag == Iex_Invalid) return;
+	if (data.tag == Iex_Invalid && data.op == "Iop_Invalid") return;
 	printf("\t%s.tag = %s\n", prefix, vex_tag_enum_to_str(data.tag).c_str());
 	printf("\t%s.ty = %s\n", prefix, vex_tag_enum_to_str(data.ty).c_str());
 	printf("\t%s.op = %s\n", prefix, data.op.c_str());
 	printf("\t%s.con = 0x%x\n", prefix, data.con);
 	printf("\t%s.tmp = %d\n", prefix, data.tmp);
+	printf("\t%s.offset = 0x%x\n", prefix, data.offset);
 }
 
 void print_vex_insns(vex_insns insns)
 {
 	for (auto &insn : insns) {
-		puts("");
 		printf("%s\n", insn.full.c_str());
 		printf("\ttag = %s\n", vex_tag_enum_to_str(insn.tag).c_str());
 		printf("\toffset = %d\n", insn.offset);
@@ -156,7 +174,25 @@ void print_vex_insns(vex_insns insns)
 			printf("\taddr = 0x%x\n", insn.addr);
 			printf("\tlen = %d\n", insn.len);
 		}
+		if (insn.tag == Ist_Exit) {
+			print_vex_expr(insn.guard, "guard");
+			printf("\toffsIP = %d\n", insn.offsIP);
+			printf("\tdst = 0x%x\n", insn.dst);
+		}
 	}
+}
+
+void set_expr(vex_expr *insn, PyObject *obj)
+{
+	PyObject *v;
+	v = PyDict_GetItemString(obj, "tag");								
+	if (v) insn->tag = vex_tag_iex_str_to_enum(PyString_AsString(v));	
+	v = PyDict_GetItemString(obj, "tmp");								
+	if (v) insn->tmp = PyInt_AsLong(v);
+	v = PyDict_GetItemString(obj, "con");								
+	if (v) insn->con = PyInt_AsLong(v);
+	v = PyDict_GetItemString(obj, "offset");								
+	if (v) insn->offset = PyInt_AsLong(v);
 }
 
 bool vex_lift(vex_insns_group *insns_group, unsigned char *insns_bytes, unsigned int start_addr, int count)
@@ -191,12 +227,22 @@ bool vex_lift(vex_insns_group *insns_group, unsigned char *insns_bytes, unsigned
 					insn.full = PyString_AsString(v);
 					v = PyDict_GetItemString(item, "tag");
 					insn.tag = vex_tag_ist_str_to_enum(PyString_AsString(v));
+					v = PyDict_GetItemString(item, "tmp");
+					if (v) insn.tmp = PyInt_AsLong(v);					
 					v = PyDict_GetItemString(item, "offset");
 					if (v) insn.offset = PyInt_AsLong(v);
 					v = PyDict_GetItemString(item, "addr");
 					if (v) insn.addr = PyInt_AsLong(v);	
 					v = PyDict_GetItemString(item, "len");
-					if (v) insn.len = PyInt_AsLong(v);					
+					if (v) insn.len = PyInt_AsLong(v);		
+					v = PyDict_GetItemString(item, "jumpkind");
+					if (v) insn.jumpkind = PyString_AsString(v);
+					v = PyDict_GetItemString(item, "dst");
+					if (v) insn.dst = PyInt_AsLong(v);
+					v = PyDict_GetItemString(item, "offsIP");
+					if (v) insn.offsIP = PyInt_AsLong(v);
+					v = PyDict_GetItemString(item, "guard");
+					if (v) set_expr(&insn.guard, v);
 					data = PyDict_GetItemString(item, "data");
 					if (data) { 
 						v = PyDict_GetItemString(data, "tag");
@@ -208,18 +254,14 @@ bool vex_lift(vex_insns_group *insns_group, unsigned char *insns_bytes, unsigned
 						v = PyDict_GetItemString(data, "tmp");
 						if (v) insn.data.tmp = PyInt_AsLong(v);
 						v = PyDict_GetItemString(data, "con");
-						if (v) insn.data.con = PyInt_AsLong(v);		
+						if (v) insn.data.con = PyInt_AsLong(v);
 						v = PyDict_GetItemString(data, "offset");
 						if (v) insn.data.offset = PyInt_AsLong(v);
 						args = PyDict_GetItemString(data, "args");
 						if (args) {
 							for(Py_ssize_t j = 0; j < PyList_Size(args); j++) {
-								v = PyDict_GetItemString(item, "tmp");								
-								if (v) insn.data.args[j].tmp = PyInt_AsLong(v);
-								v = PyDict_GetItemString(item, "con");								
-								if (v) insn.data.args[j].con = PyInt_AsLong(v);
-								v = PyDict_GetItemString(item, "offset");								
-								if (v) insn.data.args[j].offset = PyInt_AsLong(v);
+								PyObject *args_j = PyList_GetItem(args, j);
+								set_expr(&insn.data.args[j], args_j);
 							}
 						}
 					}
@@ -236,7 +278,8 @@ bool vex_lift(vex_insns_group *insns_group, unsigned char *insns_bytes, unsigned
 				fprintf(stderr, "Passed PyObject pointer was not a list or tuple!");
 			}
 			for(auto itr = insns_group->begin(); itr != insns_group->end(); ++itr) {
-				printf("address = 0x%x\n", itr->first);
+				puts("");
+				printf("*** [address = 0x%x] ***\n", itr->first);
 				print_vex_insns(itr->second);
 			}
 		}
