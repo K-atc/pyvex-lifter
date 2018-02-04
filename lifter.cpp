@@ -7,6 +7,8 @@
 #include <string.h>
 #include <fstream>
 
+#include "lifter.py.inc"
+
 typedef enum vex_tag_ist {
 	Ist_Invalid,
 	Ist_Put,
@@ -199,21 +201,19 @@ bool vex_lift(vex_insns_group *insns_group, unsigned char *insns_bytes, unsigned
 {
 	PyObject *global, *func;
 
-	// Python インタプリタの起動
+	// Invoke Python Interpreter
 	Py_Initialize();
 
-	PyRun_SimpleString("import sys");
-	PyRun_SimpleString("sys.path.append(\".\")");
-	PyRun_SimpleString("from lifter import Lift");
+	// Load Helper Script
+	PyRun_SimpleString(script);
 
-	// スクリプトの関数への参照を取得
+	// Get ref of function
 	global = PyModule_GetDict(PyImport_ImportModule("__main__"));
 	func = PyDict_GetItemString(global, "Lift");
 
-	// もし参照がうまくとれたら
-	if (PyCallable_Check(func))
+	if (PyCallable_Check(func)) // Checks if we got ref
     {
-		// 評価する
+		// Do Lift
 		PyObject *ans = PyEval_CallFunction(func, "zii", insns_bytes, start_addr, count);
 		if( ans )
 		{
@@ -275,7 +275,7 @@ bool vex_lift(vex_insns_group *insns_group, unsigned char *insns_bytes, unsigned
 					}
 				}
 			} else {
-				fprintf(stderr, "Passed PyObject pointer was not a list or tuple!");
+				fprintf(stderr, "Passed pointer of PyObject was not a list or tuple!");
 			}
 			for(auto itr = insns_group->begin(); itr != insns_group->end(); ++itr) {
 				puts("");
@@ -290,11 +290,10 @@ bool vex_lift(vex_insns_group *insns_group, unsigned char *insns_bytes, unsigned
 		return false;
 	}
 
-	// リファレンスを解放
 	Py_DECREF(global);
     Py_DECREF(func);
 
-	// インタプリタ終了
+	// Terminate Interpreter
 	Py_Finalize();
 
 	return true;

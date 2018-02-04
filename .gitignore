@@ -5,3 +5,4 @@ lifter
 **/.gdb_history
 **/peda-session*
 **/*.pyc
+**/*.py.inc

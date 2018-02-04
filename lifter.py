@@ -17,37 +17,6 @@ def usage():
 def clean_dir(x):
     print(filter(lambda x: not x.startswith('_'), dir(x)))
 
-def print_expr_args(args, prefix="data"):
-    for i, x in enumerate(args):
-        print("\t%s.args[%d].tag = %s" % (prefix, i, x.tag))
-        if x.tag in ["Iex_RdTmp"]:
-            print("\t%s.args[%d].tmp = %s" % (prefix, i, x.tmp))
-        elif x.tag in ["Iex_Const"]:
-            print("\t%s.args[%d].con = %s" % (prefix, i, x.con))
-        else:
-            raise UnhandledStmtError(expr)
-
-def print_expr(expr, prefix="data"):
-    print("\t%s.tag = %s" % (prefix, expr.tag))
-    if expr.tag in ["Iex_Get"]:
-        print("\t%s.offset = %s" % (prefix, expr.offset))
-    elif expr.tag in ["Iex_Const"]:
-        print('\t%s.con = %s' % (prefix, expr.con))
-    elif expr.tag in ["Iex_RdTmp"]:
-        print("\t%s.tmp = %s" % (prefix, expr.tmp))
-    elif expr.tag in ["Iex_Binop", "Iex_Unop"]:
-        print("\t%s.op = %s" % (prefix, expr.op))
-        print_expr_args(expr.args, prefix)
-    elif expr.tag in ["Iex_Load"]:
-        print("\t%s.addr = %s" % (prefix, expr.addr))
-        print("\t%s.ty = %s" % (prefix, expr.ty))
-    elif expr.tag in ["Iex_CCall"]:
-        print("\t%s.retty = %s" % (prefix, expr.retty))
-        print("\t%s.cee = %s" % (prefix, expr.cee))
-        print_expr_args(expr.args, prefix)
-    else:
-        raise UnhandledStmtError(expr)
-
 def parse_expr_args(args):
     ret = []
     for i, x in enumerate(args):
@@ -94,8 +63,6 @@ def Lift(insn_bytes, START_ADDR, count):
     #     irsb = pyvex.IRSB(bytes(i.bytes), START_ADDR, archinfo.ArchAMD64(), max_bytes=len(i.bytes))
     #     irsb.pp()
 
-    hexdump(insn_bytes)
-
     offset = 0
     len_insn_bytes = len(insn_bytes)
     if count < len_insn_bytes:
@@ -135,44 +102,28 @@ def Lift(insn_bytes, START_ADDR, count):
                 ret = {}
                 ret['full'] = str(stmt)
                 ret['tag'] = stmt.tag
-                # print("\ttag = %s" % (stmt.tag))
                 if False:
                     pass
                 elif stmt.tag in ["Ist_Put"]:
                     ret['data'] = parse_expr(stmt.data)
                     ret['offset'] = stmt.offset
-                    # print("\tdata = %s" % (stmt.data))
-                    # print("\toffset = %s" % (stmt.offset))
                 elif stmt.tag in ["Ist_Store"]:
                     ret['data'] = parse_expr(stmt.data)
-                    # print("\tdata = %s" % (stmt.data))
                 elif stmt.tag in ["Ist_WrTmp"]:
-                    # print("\ttmp = %s" % (stmt.tmp))
-                    # print("\tdata = %s" % (stmt.data))
-                    # print_expr(stmt.data, "data")
                     ret['tmp'] = stmt.tmp
                     ret['data'] = parse_expr(stmt.data)
                 elif stmt.tag == "Ist_Exit":
                     ret['jumpkind'] = stmt.jumpkind
-                    # print("\tjump_kind = %s" % (stmt.jumpkind))
-                    # print_expr(stmt.guard, "guard")
                     ret['guard'] = parse_expr(stmt.guard)
                     ret['offsIP'] = stmt.offsIP
                     ret['dst'] = int(str(stmt.dst), 16)
-                    # print("\toffsIP = %s" % (stmt.offsIP))
-                    # print("\tdst = %s" % (stmt.dst))
                 elif stmt.tag == "Ist_IMark":
                     ret['addr'] = stmt.addr
                     ret['len'] = stmt.len
-                    # print("\taddr = %#x" % (stmt.addr))
-                    # print("\tlen = %s" % (stmt.len))
                 elif stmt.tag == "Ist_AbiHint":
                     ret['base'] = parse_expr(stmt.base)
                     ret['len'] = stmt.len
                     ret['nia'] = int(str(stmt.nia), 16)
-                    # print("\tbase = %s" % (stmt.base))                
-                    # print("\tlen = %s" % (stmt.len))                
-                    # print("\tnia = %s" % (stmt.nia))                
                 else:
                     raise UnhandledStmtError(stmt)
                 print ret

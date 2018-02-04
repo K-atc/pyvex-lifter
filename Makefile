@@ -1,7 +1,11 @@
 all: lifter
 	# 
-lifter: lifter.cpp
+
+lifter: lifter.cpp lifter.py.inc
 	g++ -o $@ $< -lpython2.7
+
+%.py.inc: %.py
+	(echo 'const char script[] = ""'; sed -e 's/\\/\\\\/g' -e 's/\"/\\\"/g' -e 's/^/\t\"/g' -e 's/$$/\\n\"/g' $<; echo ' "";') > $@
 
 test: lifter
 	./lifter correct-argv1.bin 0x25 0x400080
