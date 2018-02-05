@@ -2,8 +2,6 @@
 import pyvex
 import archinfo
 from capstone import *
-import sys
-from hexdump import hexdump
 
 class UnhandledStmtError(Exception):
     def __init__(self, x):
@@ -17,11 +15,13 @@ def usage():
 def clean_dir(x):
     print(filter(lambda x: not x.startswith('_'), dir(x)))
 
-def parse_expr_args(args):
+def parse_expr_args(args, tyenv=None):
     ret = []
     for i, x in enumerate(args):
         ret.append({})
         ret[i]['tag'] = x.tag
+        if (tyenv is not None) and hasattr(x, "result_size"):
+            ret[i]['result_size'] = int(x.result_size(tyenv))
         if x.tag in ["Iex_RdTmp"]:
             ret[i]['tmp'] = x.tmp
         elif x.tag in ["Iex_Const"]:
@@ -30,11 +30,12 @@ def parse_expr_args(args):
             raise UnhandledStmtError(expr)
     return ret
 
-def parse_expr(expr):
+def parse_expr(expr, tyenv=None):
     ret = {}
     ret['tag'] = expr.tag
+    if (tyenv is not None) and hasattr(expr, "result_size"):
+        ret['result_size'] = int(expr.result_size(tyenv))
     if expr.tag in ["Iex_Get"]:
-        clean_dir(expr)
         ret['offset'] = expr.offset
         ret['ty'] = expr.ty
     elif expr.tag in ["Iex_Const"]:
@@ -43,103 +44,123 @@ def parse_expr(expr):
         ret['tmp'] = expr.tmp
     elif expr.tag in ["Iex_Binop", "Iex_Unop"]:
         ret['op'] = expr.op
-        ret['args'] = parse_expr_args(expr.args)
+        ret['args'] = parse_expr_args(expr.args, tyenv=tyenv)
+        ret['nargs'] = len(ret['args'])
     elif expr.tag in ["Iex_Load"]:
-        ret['addr'] = parse_expr(expr.addr)
+        ret['addr'] = parse_expr(expr.addr, tyenv=tyenv)
         ret['ty'] = expr.ty
     elif expr.tag in ["Iex_CCall"]:
         ret['retty'] = expr.retty
         ret['cee'] = expr.cee
-        ret['args'] = parse_expr_args(expr.args)
+        ret['args'] = parse_expr_args(expr.args, tyenv=tyenv)
     else:
         raise UnhandledStmtError(expr)
+    print(ret)
     return ret
 
 def Lift(insn_bytes, START_ADDR, count):
-    md = Cs(CS_ARCH_X86, CS_MODE_64)
-    # for i in md.disasm(insn_bytes, 0x1000):
-    #     print("0x%x:\t%s\t%s" %(i.address, i.mnemonic, i.op_str))
-    #     print("%r" % i.bytes)
-    #     irsb = pyvex.IRSB(bytes(i.bytes), START_ADDR, archinfo.ArchAMD64(), max_bytes=len(i.bytes))
-    #     irsb.pp()
+    try:
+        md = Cs(CS_ARCH_X86, CS_MODE_64)
+        # for i in md.disasm(insn_bytes, 0x1000):
+        #     print("0x%x:\t%s\t%s" %(i.address, i.mnemonic, i.op_str))
+        #     print("%r" % i.bytes)
+        #     irsb = pyvex.IRSB(bytes(i.bytes), START_ADDR, archinfo.ArchAMD64(), max_bytes=len(i.bytes))
+        #     irsb.pp()
 
-    offset = 0
-    len_insn_bytes = len(insn_bytes)
-    if count < len_insn_bytes:
-        len_insn_bytes = count
-        insn_bytes = insn_bytes[:len_insn_bytes]
-    insns = []
-    while offset < len_insn_bytes:
-        ### print a instruction
-        print("")
-        for insn in md.disasm(insn_bytes[offset:], START_ADDR + offset):
-            print("0x%x:\t%s\t%s" %(insn.address, insn.mnemonic, insn.op_str))
-            # irsb = pyvex.IRSB(bytes(insn.bytes), insn.address, archinfo.ArchAMD64(), max_bytes=insn.size)
-            break
-        if True:
-            try:
+        offset = 0
+        len_insn_bytes = len(insn_bytes)
+        if count < len_insn_bytes:
+            len_insn_bytes = count
+            insn_bytes = insn_bytes[:len_insn_bytes]
+        insns = []
+        while offset < len_insn_bytes:
+            ### print a instruction
+            disasm_str = ""
+            for insn in md.disasm(insn_bytes[offset:], START_ADDR + offset):
+                # print("0x%x:\t%s\t%s" %(insn.address, insn.mnemonic, insn.op_str))
+                disasm_str = "%s\t%s" %(insn.mnemonic, insn.op_str)
+                # irsb = pyvex.IRSB(bytes(insn.bytes), insn.address, archinfo.ArchAMD64(), max_bytes=insn.size)
+                break
+            if True:
                 irsb = pyvex.IRSB(insn_bytes[offset:], insn.address, archinfo.ArchAMD64())
-            except Exception as e:
-                print("[!] Exception: " + str(e))
-                break # quit lifting
-            offset += irsb.size
-            # continue
-            
-            ### pretty print a basic block
-            irsb.pp()
 
-            ### interpret statements
-            for stmt in irsb.statements:
-                ### Skip lifting
-                if stmt.tag in ["Ist_Put", "Ist_IMark"]:
-                    # continue
-                    pass
-                
-                # clean_dir(stmt)
-                print("")
-                stmt.pp()
+                offset += irsb.size
+                # continue
 
-                ret = {}
-                ret['full'] = str(stmt)
-                ret['tag'] = stmt.tag
-                if False:
+                ### pretty print a basic block
+                irsb.pp()
+
+                ### fetch block jumpkind
+                block_jump_insn = {}
+                if irsb.jumpkind:
+                    block_jump_insn['full'] = irsb.jumpkind.split('_', 1)[1]
+                    block_jump_insn['tag'] = "Ist_Jump"
+                    block_jump_insn['jumpkind'] = irsb.jumpkind
+
+                ### interpret statements
+                for stmt in irsb.statements:
+                    # clean_dir(stmt)
+                    # print("")
+                    # stmt.pp()
+
+                    ret = {}
+                    ret['full'] = str(stmt)
+                    ret['tag'] = stmt.tag
+                    if False:
+                        pass
+                    elif stmt.tag in ["Ist_Put"]:
+                        ret['data'] = parse_expr(stmt.data, tyenv=irsb.tyenv)
+                        ret['offset'] = stmt.offset
+                    elif stmt.tag in ["Ist_Store"]:
+                        ret['data'] = parse_expr(stmt.data, tyenv=irsb.tyenv)
+                    elif stmt.tag in ["Ist_WrTmp"]:
+                        ret['tmp'] = stmt.tmp
+                        ret['data'] = parse_expr(stmt.data, tyenv=irsb.tyenv)
+                    elif stmt.tag == "Ist_Exit":
+                        ret['jumpkind'] = stmt.jumpkind
+                        ret['guard'] = parse_expr(stmt.guard, tyenv=irsb.tyenv)
+                        ret['offsIP'] = stmt.offsIP
+                        ret['dst'] = int(str(stmt.dst), 16)
+                    elif stmt.tag == "Ist_IMark":
+                        ret['addr'] = stmt.addr
+                        ret['len'] = stmt.len
+                        ret['disasm'] = disasm_str
+                    elif stmt.tag == "Ist_AbiHint":
+                        ret['base'] = parse_expr(stmt.base, tyenv=irsb.tyenv)
+                        ret['len'] = stmt.len
+                        ret['nia'] = int(str(stmt.nia), 16)
+                    else:
+                        raise UnhandledStmtError(stmt)
+
+                    # print ret
+                    insns.append(ret)
+                if block_jump_insn is not {}:
+                    insns.append(block_jump_insn)
                     pass
-                elif stmt.tag in ["Ist_Put"]:
-                    ret['data'] = parse_expr(stmt.data)
-                    ret['offset'] = stmt.offset
-                elif stmt.tag in ["Ist_Store"]:
-                    ret['data'] = parse_expr(stmt.data)
-                elif stmt.tag in ["Ist_WrTmp"]:
-                    ret['tmp'] = stmt.tmp
-                    ret['data'] = parse_expr(stmt.data)
-                elif stmt.tag == "Ist_Exit":
-                    ret['jumpkind'] = stmt.jumpkind
-                    ret['guard'] = parse_expr(stmt.guard)
-                    ret['offsIP'] = stmt.offsIP
-                    ret['dst'] = int(str(stmt.dst), 16)
-                elif stmt.tag == "Ist_IMark":
-                    ret['addr'] = stmt.addr
-                    ret['len'] = stmt.len
-                elif stmt.tag == "Ist_AbiHint":
-                    ret['base'] = parse_expr(stmt.base)
-                    ret['len'] = stmt.len
-                    ret['nia'] = int(str(stmt.nia), 16)
-                else:
-                    raise UnhandledStmtError(stmt)
-                print ret
-                insns.append(ret)
+
+    except Exception as e:
+        import sys, os
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        sys.stderr.write("[!] Exception: %s\n" % str((str(e), fname, exc_tb.tb_lineno)))
+
     return insns
 
 if __name__ == '__main__':
-    if len(sys.argv) < 2:
-        usage()
+    try:
+        import sys
+        if len(sys.argv) < 2:
+            usage()
 
-    BIN_FILE = sys.argv[1]
-    START_ADDR = 0x4000a5
+        BIN_FILE = sys.argv[1]
+        START_ADDR = 0x4000a5
 
-    with open(BIN_FILE, 'rb') as f:
-        insn_bytes = f.read()[0x25:]
+        with open(BIN_FILE, 'rb') as f:
+            insn_bytes = f.read()[0x25:]
 
-    insns = Lift(insn_bytes, START_ADDR, count)
-    # for x in insns:
-    #     print(x)
+        insns = Lift(insn_bytes, START_ADDR, len(insn_bytes))
+        for x in insns:
+            print(x)
+            pass
+    except Exception as e:
+        print("[!] Exception: " + str(e))
