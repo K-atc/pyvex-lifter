@@ -109,6 +109,11 @@ typedef enum {
                             invalid at the point this happens. */
 } vex_ir_ijk;
 
+typedef enum {
+    Iend_LE,
+    Iend_BE
+} vex_ir_endness;
+
 // TODO:
 // typedef enum vex_tag_iop
 typedef std::string vex_tag_iop;
@@ -146,6 +151,8 @@ typedef struct vex_insn {
     int offsIP;
     int dst;
     std::string disasm;
+    vex_ir_endness endness = Iend_LE;
+    vex_expr addr_expr;
 } vex_insn;
 
 
@@ -323,6 +330,19 @@ vex_ir_ijk vex_ijk_str_to_enum(std::string tag)
     return Ijk_Invalid;
 }
 
+vex_ir_endness vex_ir_endness_str_to_enum(std::string tag)
+{
+    tag_str_to_enum(Iend_LE);
+    tag_str_to_enum(Iend_BE);
+    return Iend_LE;
+}
+
+std::string vex_tag_enum_to_str(vex_ir_endness tag)
+{
+    tag_enum_to_str(Iend_LE);
+    tag_enum_to_str(Iend_BE);
+    return "Iend_LE";
+}
 
 void print_vex_expr(vex_expr expr, char* prefix)
 {
@@ -358,6 +378,10 @@ void print_vex_insns(vex_insns insns)
         printf("%s\n", insn.full.c_str());
         printf("\ttag = %s\n", vex_tag_enum_to_str(insn.tag).c_str());
         printf("\toffset = %d\n", insn.offset);
+        if (insn.tag == Ist_Store) {
+            print_vex_expr(insn.addr_expr, (char *) "addr");
+            printf("\tendness = %s\n", vex_tag_enum_to_str(insn.endness).c_str());
+        }
         print_vex_insn_data(insn.data, (char *) "data");
         if (insn.tag == Ist_IMark) {
             printf("\tdisasm = %s\n", insn.disasm.c_str());
@@ -435,8 +459,12 @@ bool vex_lift(vex_insns_group *insns_group, unsigned char *insns_bytes, unsigned
                     if (v) insn.dst = PyInt_AsLong(v);
                     v = PyDict_GetItemString(item, "offsIP");
                     if (v) insn.offsIP = PyInt_AsLong(v);
+                    v = PyDict_GetItemString(item, "endness");
+                    if (v) insn.endness = vex_ir_endness_str_to_enum(PyString_AsString(v));
                     v = PyDict_GetItemString(item, "guard");
                     if (v) set_expr(&insn.guard, v);
+                    v = PyDict_GetItemString(item, "addr_expr");
+                    if (v) set_expr(&insn.addr_expr, v);
                     data = PyDict_GetItemString(item, "data");
                     if (data) {
                         v = PyDict_GetItemString(data, "tag");

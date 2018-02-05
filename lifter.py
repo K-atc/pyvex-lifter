@@ -112,6 +112,8 @@ def Lift(insn_bytes, START_ADDR, count):
                         ret['data'] = parse_expr(stmt.data, tyenv=irsb.tyenv)
                         ret['offset'] = stmt.offset
                     elif stmt.tag in ["Ist_Store"]:
+                        ret['addr_expr'] = parse_expr(stmt.addr) # <pyvex.expr.RdTmp object at 0x7f44c6c5ba70>
+                        ret['endness'] = stmt.endness
                         ret['data'] = parse_expr(stmt.data, tyenv=irsb.tyenv)
                     elif stmt.tag in ["Ist_WrTmp"]:
                         ret['tmp'] = stmt.tmp
