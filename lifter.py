@@ -8,12 +8,15 @@ class UnhandledStmtError(Exception):
         self.expression = x.pp()
         self.message = "Unhandled Statement Error"
 
-def usage():
-    print("{} BIN_FILE".format(sys.argv[0]))
-    exit(1)
-
 def clean_dir(x):
     print(filter(lambda x: not x.startswith('_'), dir(x)))
+
+def parse_const(const):
+    ret = {}
+    ret['tag'] = const.tag
+    ret['size'] = const.size
+    ret['value'] = const.value
+    return ret
 
 def parse_expr_args(args, tyenv=None):
     ret = []
@@ -35,6 +38,8 @@ def parse_expr(expr, tyenv=None):
     ret['tag'] = expr.tag
     if (tyenv is not None) and hasattr(expr, "result_size"):
         ret['result_size'] = int(expr.result_size(tyenv))
+    if hasattr(expr, "endness"):
+        ret['endness'] = expr.endness
     if expr.tag in ["Iex_Get"]:
         ret['offset'] = expr.offset
         ret['ty'] = expr.ty
@@ -55,7 +60,6 @@ def parse_expr(expr, tyenv=None):
         ret['args'] = parse_expr_args(expr.args, tyenv=tyenv)
     else:
         raise UnhandledStmtError(expr)
-    print(ret)
     return ret
 
 def Lift(insn_bytes, START_ADDR, count):
@@ -122,7 +126,7 @@ def Lift(insn_bytes, START_ADDR, count):
                         ret['jumpkind'] = stmt.jumpkind
                         ret['guard'] = parse_expr(stmt.guard, tyenv=irsb.tyenv)
                         ret['offsIP'] = stmt.offsIP
-                        ret['dst'] = int(str(stmt.dst), 16)
+                        ret['dst'] = parse_const(stmt.dst)
                     elif stmt.tag == "Ist_IMark":
                         ret['addr'] = stmt.addr
                         ret['len'] = stmt.len
@@ -147,22 +151,3 @@ def Lift(insn_bytes, START_ADDR, count):
         sys.stderr.write("[!] Exception: %s\n" % str((str(e), fname, exc_tb.tb_lineno)))
 
     return insns
-
-if __name__ == '__main__':
-    try:
-        import sys
-        if len(sys.argv) < 2:
-            usage()
-
-        BIN_FILE = sys.argv[1]
-        START_ADDR = 0x4000a5
-
-        with open(BIN_FILE, 'rb') as f:
-            insn_bytes = f.read()[0x25:]
-
-        insns = Lift(insn_bytes, START_ADDR, len(insn_bytes))
-        for x in insns:
-            print(x)
-            pass
-    except Exception as e:
-        print("[!] Exception: " + str(e))
