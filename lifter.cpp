@@ -585,14 +585,24 @@ bool vex_lift(vex_insns_group *insns_group, unsigned char *insns_bytes, unsigned
     global = PyModule_GetDict(PyImport_ImportModule("__main__"));
     func = PyDict_GetItemString(global, "Lift");
 
+    setvbuf(stdout, NULL, _IONBF, 0);
     if (PyCallable_Check(func)) // Checks if we got ref
     {
         // Do Lift
-        PyObject *ans = PyEval_CallFunction(func, "zii", insns_bytes, start_addr, count);
-        if( ans )
+        Py_ssize_t insns_bytes_size = PyLong_AsSsize_t(PyLong_FromLong(count));
+        // PyObject *ans = PyEval_CallFunction(func, "y*ii",
+        //     PyBytes_FromStringAndSize((const char*) insns_bytes, insns_bytes_size),
+        //     start_addr,
+        //     count
+        // );
+        PyObject* pArgs = PyTuple_New(2);
+        PyTuple_SetItem(pArgs, 0, PyBytes_FromStringAndSize((const char*) insns_bytes, insns_bytes_size));
+        PyTuple_SetItem(pArgs, 1, PyLong_FromLong(start_addr));
+        PyObject* ans = PyObject_CallObject(func, pArgs);
+        if (ans)
         {
             if (PyList_Check(ans)) {
-                unsigned int current_addr;
+                unsigned int current_addr = 0;
                 for(Py_ssize_t i = 0; i < PyList_Size(ans); i++) {
                     PyObject *item = PyList_GetItem(ans, i);
                     vex_insn insn;
@@ -716,7 +726,7 @@ static size_t readFileAll(const char* file_name, unsigned char* read_to, size_t 
         std::istreambuf_iterator<char>());
     memset(read_to, 0, size);
     memcpy(read_to, read_to_str.c_str(), size);
-    return strlen((char *) read_to);
+    return size;
 }
 
 int main(int argc, const char *argv[])
@@ -731,13 +741,13 @@ int main(int argc, const char *argv[])
     unsigned int start_addr = strtol(argv[3], 0, 16);
     printf("start_addr = 0x%x\n", start_addr);
     size_t file_size = getFileSize(BinFileName);
+    printf("file_size = 0x%x\n", file_size);
     unsigned char* bin;
     bin = (unsigned char*) malloc(file_size);
     readFileAll(BinFileName, bin, file_size);
 
     vex_insns_group insns_group;
     bool err;
-    // err = vex_lift(&insns, (unsigned char *)"\x48\x89\xe5");
     err = vex_lift(&insns_group, &bin[bin_offset], start_addr, file_size - bin_offset);
     return 0;
 }

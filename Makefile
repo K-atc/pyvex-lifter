@@ -11,4 +11,4 @@ test: lifter
 	./lifter correct-argv1.bin 0x25 0x4000a5
 
 test-gdb: lifter
-	gdb -q ./lifter -ex "r correct-argv1.bin 0x25 0x4000a5"
+	gdb -q ./lifter -ex "b PyEval_CallFunction" -ex "r correct-argv1.bin 0x25 0x4000a5"

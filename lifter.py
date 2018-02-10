@@ -2,6 +2,7 @@
 import pyvex
 import archinfo
 from capstone import *
+import hexdump
 
 class UnhandledStmtError(Exception):
     def __init__(self, x):
@@ -62,14 +63,22 @@ def parse_expr(expr, tyenv=None):
         raise UnhandledStmtError(expr)
     return ret
 
-def Lift(insn_bytes, START_ADDR, count):
+def Lift(insn_bytes, START_ADDR):
     try:
+        count = len(insn_bytes)
+        print("insn_bytes = %s" % type(insn_bytes))
+        print("len(insn_bytes) = %#x" % len(insn_bytes))
+        hexdump.hexdump(insn_bytes[:count])
+
         md = Cs(CS_ARCH_X86, CS_MODE_64)
-        # for i in md.disasm(insn_bytes, 0x1000):
+
+        ### lift per one insn
+        # for i in md.disasm(insn_bytes, START_ADDR):
         #     print("0x%x:\t%s\t%s" %(i.address, i.mnemonic, i.op_str))
         #     print("%r" % i.bytes)
-        #     irsb = pyvex.IRSB(bytes(i.bytes), START_ADDR, archinfo.ArchAMD64(), max_bytes=len(i.bytes))
+        #     irsb = pyvex.IRSB(bytes(i.bytes), i.address, archinfo.ArchAMD64(), max_bytes=len(i.bytes))
         #     irsb.pp()
+        # return []
 
         offset = 0
         len_insn_bytes = len(insn_bytes)
@@ -80,19 +89,21 @@ def Lift(insn_bytes, START_ADDR, count):
         while offset < len_insn_bytes:
             ### print a instruction
             disasm_str = ""
+            insn_address = 0
             for insn in md.disasm(insn_bytes[offset:], START_ADDR + offset):
                 # print("0x%x:\t%s\t%s" %(insn.address, insn.mnemonic, insn.op_str))
                 disasm_str = "%s\t%s" %(insn.mnemonic, insn.op_str)
                 # irsb = pyvex.IRSB(bytes(insn.bytes), insn.address, archinfo.ArchAMD64(), max_bytes=insn.size)
+                insn_address = insn.address
                 break
             if True:
-                irsb = pyvex.IRSB(insn_bytes[offset:], insn.address, archinfo.ArchAMD64())
+                irsb = pyvex.IRSB(insn_bytes[offset:], insn_address, archinfo.ArchAMD64())
 
                 offset += irsb.size
                 # continue
 
                 ### pretty print a basic block
-                irsb.pp()
+                # irsb.pp()
 
                 ### fetch block jumpkind
                 block_jump_insn = {}
@@ -148,6 +159,6 @@ def Lift(insn_bytes, START_ADDR, count):
         import sys, os
         exc_type, exc_obj, exc_tb = sys.exc_info()
         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-        sys.stderr.write("[!] Exception: %s\n" % str((str(e), fname, exc_tb.tb_lineno)))
+        sys.stderr.write("[!] Exception: %s\n" % str((str(e), str(fname), exc_tb.tb_lineno)))
 
     return insns
