@@ -7,6 +7,7 @@
 #include <iostream>
 #include <string.h>
 #include <fstream>
+#include <sstream>
 
 #include "lifter.py.inc"
 
@@ -179,6 +180,7 @@ typedef struct {
 
 typedef struct : vex_expr {
     vex_tag_iop op = "Iop_Invalid";
+    vex_expr addr;
     vex_expr args[8];
     int nargs = 0;
     vex_ir_endness endness = Iend_Invalid;
@@ -211,6 +213,14 @@ constexpr size_t length(char const (&)[N]) {
 #define compare_tag_and_enum(x) if (tag.compare(0, length(#x), (#x)) == 0)
 #define compare_tag_and_enum_with_return(x) compare_tag_and_enum(x) return x;
 
+std::string vex_tag_enum_to_str(vex_tag_ist tag);
+std::string vex_tag_enum_to_str(vex_tag_iex tag);
+std::string vex_tag_enum_to_str(vex_ir_ity tag);
+std::string vex_tag_enum_to_str(vex_ir_ijk tag);
+std::string vex_tag_enum_to_str(vex_ir_endness tag);
+std::string vex_tag_enum_to_str(vex_tag_ico tag);
+std::string vex_tag_enum_to_str(vex_abst_iop tag);
+
 constexpr unsigned int vex_itype(vex_tag_ist const &ist) {
     return ist * VEX_IST_BASE;
 }
@@ -221,6 +231,22 @@ constexpr unsigned int vex_itype(vex_tag_ist const &ist, vex_tag_iex const &iex)
 
 constexpr unsigned int vex_itype(vex_tag_ist const &ist, vex_tag_iex const &iex, vex_abst_iop const &iop) {
     return vex_itype(ist, iex) + iop * VEX_IOP_BASE;
+}
+
+std::string vex_repr_itype(unsigned int type) {
+    unsigned int ist = type / VEX_IST_BASE;
+    type -= ist * VEX_IST_BASE;
+    unsigned int iex = type / VEX_IEX_BASE;
+    type -= iex * VEX_IEX_BASE;
+    unsigned int iop = type / VEX_IOP_BASE;
+    std::ostringstream str;
+    str <<
+        vex_tag_enum_to_str((vex_tag_ist)(ist)) <<
+        "|" <<
+        vex_tag_enum_to_str((vex_tag_iex)(iex)) <<
+        "|" <<
+        vex_tag_enum_to_str((vex_abst_iop)(iop));
+    return str.str();
 }
 
 #define tag_str_to_enum(x) if (tag == #x) {return x;}
@@ -478,6 +504,40 @@ std::string vex_tag_enum_to_str(vex_tag_ico tag)
     return "Ico_Invalid";
 }
 
+std::string vex_tag_enum_to_str(vex_abst_iop tag)
+{
+    tag_enum_to_str(Iop_Add);
+    tag_enum_to_str(Iop_Sub);
+    tag_enum_to_str(Iop_Mul);
+    tag_enum_to_str(Iop_MullS);
+    tag_enum_to_str(Iop_MullU);
+    tag_enum_to_str(Iop_DivS);
+    tag_enum_to_str(Iop_DivU);
+    tag_enum_to_str(Iop_Mod);
+    tag_enum_to_str(Iop_Or);
+    tag_enum_to_str(Iop_And);
+    tag_enum_to_str(Iop_Xor);
+    tag_enum_to_str(Iop_Shr);
+    tag_enum_to_str(Iop_Shl);
+    tag_enum_to_str(Iop_Not);
+    tag_enum_to_str(Iop_CmpEQ);
+    tag_enum_to_str(Iop_CmpNE);
+    tag_enum_to_str(Iop_CmpSLT);
+    tag_enum_to_str(Iop_CmpSLE);
+    tag_enum_to_str(Iop_CmpULT);
+    tag_enum_to_str(Iop_CmpULE);
+    tag_enum_to_str(Iop_CmpSGE);
+    tag_enum_to_str(Iop_CmpUGE);
+    tag_enum_to_str(Iop_CmpSGT);
+    tag_enum_to_str(Iop_CmpUGT);
+    tag_enum_to_str(Iop_Cast);
+    tag_enum_to_str(Iop_CastU);
+    tag_enum_to_str(Iop_CastS);
+    tag_enum_to_str(Iop_CastHI);
+    tag_enum_to_str(Iop_CastHL);
+    return "Iop_Invalid";
+}
+
 void print_vex_const(vex_const vconst, char* prefix)
 {
     if (vconst.tag == Ico_Invalid) return;
@@ -500,7 +560,10 @@ void print_vex_expr(vex_expr expr, char* prefix)
 void print_vex_insn_data(vex_data data, char* prefix)
 {
     if (data.tag == Iex_Invalid && data.op == "Iop_Invalid") return;
-    print_vex_expr(static_cast<vex_expr> (data), (char *) "");
+    print_vex_expr(static_cast<vex_expr> (data), (char *) prefix);
+    if (data.tag == Iex_Load) {
+        print_vex_expr(data.addr_expr, (char *) "data.addr.");
+    }
     printf("\t%sop = %s\n", prefix, data.op.c_str());
     printf("\t%snargs = %d\n", prefix, data.nargs);
     if (data.endness != Iend_Invalid) {
@@ -516,11 +579,12 @@ void print_vex_insn_data(vex_data data, char* prefix)
 void print_vex_insn(vex_insn insn)
 {
     printf("%s\n", insn.full.c_str());
-    printf("\ttype = 0x%x\n", vex_itype(insn.tag, insn.data.tag, vex_iop(insn.data.op)));
+    // printf("\ttype = 0x%x\n", vex_itype(insn.tag, insn.data.tag, vex_iop(insn.data.op)));
+    printf("\ttype = %s\n", vex_repr_itype(vex_itype(insn.tag, insn.data.tag, vex_iop(insn.data.op))).c_str());
     printf("\ttag = %s\n", vex_tag_enum_to_str(insn.tag).c_str());
     printf("\toffset = %d\n", insn.offset);
     if (insn.tag == Ist_Store) {
-        print_vex_expr(insn.addr_expr, (char *) "addr.");
+        print_vex_expr(insn.addr, (char *) "addr.");
         printf("\tendness = %s\n", vex_tag_enum_to_str(insn.endness).c_str());
     }
     printf("\ttmp = %d\n", insn.tmp);
@@ -609,7 +673,7 @@ bool vex_lift(vex_insns_group *insns_group, unsigned char *insns_bytes, unsigned
                     PyObject *v, *data, *args;
                     v = PyDict_GetItemString(item, "full");
                     if (v) insn.full = PyString_AsString(v);
-                    std::cout << insn.full << std::endl;
+                    // std::cout << insn.full << std::endl; /* for debug */
                     v = PyDict_GetItemString(item, "disasm");
                     if (v) insn.disasm = PyString_AsString(v);
                     v = PyDict_GetItemString(item, "tag");
@@ -638,6 +702,8 @@ bool vex_lift(vex_insns_group *insns_group, unsigned char *insns_bytes, unsigned
                     if (data) {
                         v = PyDict_GetItemString(data, "tag");
                         insn.data.tag = vex_tag_iex_str_to_enum(PyString_AsString(v));
+                        v = PyDict_GetItemString(data, "addr");
+                        if (v) set_expr(&insn.data.addr_expr, v);
                         v = PyDict_GetItemString(data, "ty");
                         if (v) insn.data.ty = vex_ir_ity_str_to_enum(PyString_AsString(v));
                         v = PyDict_GetItemString(data, "endness");

@@ -53,7 +53,7 @@ def parse_expr(expr, tyenv=None):
         ret['args'] = parse_expr_args(expr.args, tyenv=tyenv)
         ret['nargs'] = len(ret['args'])
     elif expr.tag in ["Iex_Load"]:
-        ret['addr'] = parse_expr(expr.addr, tyenv=tyenv)
+        ret['addr_expr'] = parse_expr(expr.addr, tyenv=tyenv)
         ret['ty'] = expr.ty
     elif expr.tag in ["Iex_CCall"]:
         ret['retty'] = expr.retty
@@ -66,7 +66,8 @@ def parse_expr(expr, tyenv=None):
 def Lift(insn_bytes, START_ADDR):
     try:
         count = len(insn_bytes)
-        print("insn_bytes = %s" % type(insn_bytes))
+
+        ### for debug
         print("len(insn_bytes) = %#x" % len(insn_bytes))
         hexdump.hexdump(insn_bytes[:count])
 
@@ -103,7 +104,7 @@ def Lift(insn_bytes, START_ADDR):
                 # continue
 
                 ### pretty print a basic block
-                # irsb.pp()
+                irsb.pp()
 
                 ### fetch block jumpkind
                 block_jump_insn = {}
@@ -149,7 +150,7 @@ def Lift(insn_bytes, START_ADDR):
                     else:
                         raise UnhandledStmtError(stmt)
 
-                    # print ret
+                    print ret
                     insns.append(ret)
                 if block_jump_insn is not {}:
                     insns.append(block_jump_insn)
