@@ -1,4 +1,5 @@
 lifter
+test.c
 
 **/.[0-9]*
 .vscode/*

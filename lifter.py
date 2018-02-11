@@ -53,7 +53,7 @@ def parse_expr(expr, tyenv=None):
         ret['args'] = parse_expr_args(expr.args, tyenv=tyenv)
         ret['nargs'] = len(ret['args'])
     elif expr.tag in ["Iex_Load"]:
-        ret['addr_expr'] = parse_expr(expr.addr, tyenv=tyenv)
+        ret['addr'] = parse_expr(expr.addr, tyenv=tyenv)
         ret['ty'] = expr.ty
     elif expr.tag in ["Iex_CCall"]:
         ret['retty'] = expr.retty
@@ -81,13 +81,9 @@ def Lift(insn_bytes, START_ADDR):
         #     irsb.pp()
         # return []
 
-        offset = 0
-        len_insn_bytes = len(insn_bytes)
-        if count < len_insn_bytes:
-            len_insn_bytes = count
-            insn_bytes = insn_bytes[:len_insn_bytes]
         insns = []
-        while offset < len_insn_bytes:
+        offset = 0
+        while offset < count:
             ### print a instruction
             disasm_str = ""
             insn_address = 0
@@ -97,6 +93,7 @@ def Lift(insn_bytes, START_ADDR):
                 # irsb = pyvex.IRSB(bytes(insn.bytes), insn.address, archinfo.ArchAMD64(), max_bytes=insn.size)
                 insn_address = insn.address
                 break
+            assert(insn_address > 0)
             if True:
                 irsb = pyvex.IRSB(insn_bytes[offset:], insn_address, archinfo.ArchAMD64())
 
@@ -155,11 +152,11 @@ def Lift(insn_bytes, START_ADDR):
                 if block_jump_insn is not {}:
                     insns.append(block_jump_insn)
                     pass
+        return insns
 
     except Exception as e:
         import sys, os
         exc_type, exc_obj, exc_tb = sys.exc_info()
         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
         sys.stderr.write("[!] Exception: %s\n" % str((str(e), str(fname), exc_tb.tb_lineno)))
-
-    return insns
+        return []
