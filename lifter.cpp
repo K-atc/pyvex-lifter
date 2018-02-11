@@ -206,6 +206,10 @@ typedef struct {
 typedef std::vector<vex_insn> vex_insns;
 typedef std::map<unsigned int, vex_insns> vex_insns_group;
 
+void vex_lift_init(void);
+void vex_lift_finilize(void);
+bool vex_lift(vex_insns_group *insns_group, unsigned char *insns_bytes, unsigned long int start_addr, unsigned long int count);
+
 template< size_t N >
 constexpr size_t length(char const (&)[N]) {
   return N-1;
@@ -649,8 +653,10 @@ bool vex_lift(vex_insns_group *insns_group, unsigned char *insns_bytes, unsigned
 {
     PyObject *main, *global, *func;
 
-    // Invoke Python Interpreter
-    Py_Initialize();
+    if (!Py_IsInitialized()) {
+        fprintf(stderr, "error: Py_Initialize() must be called beforehand.\n");
+        exit(1);
+    }
 
     // Load Helper Script
     PyRun_SimpleString(script);
@@ -791,7 +797,7 @@ bool vex_lift(vex_insns_group *insns_group, unsigned char *insns_bytes, unsigned
         // Py_DECREF(pArg2);
     }
     else {
-        fprintf(stderr, "ref error\n");
+        fprintf(stderr, "error: There're no handle for lift function.\n");
         return false;
     }
 
@@ -799,10 +805,21 @@ bool vex_lift(vex_insns_group *insns_group, unsigned char *insns_bytes, unsigned
     // Py_DECREF(global);
     Py_DECREF(func);
 
-    // Terminate Interpreter
-    Py_Finalize(); // FIXME: segv occurs!!
-
     return true;
+}
+
+void vex_lift_init(void)
+{
+    // Invoke Python Interpreter
+    if (!Py_IsInitialized()) {
+        Py_Initialize();
+    }
+}
+
+void vex_lift_finilize(void)
+{
+    // Terminate Interpreter
+    Py_Finalize();
 }
 
 
@@ -845,6 +862,7 @@ int main(int argc, const char *argv[])
     if (argc < 4) {
         usage(argv);
     }
+
     const char *BinFileName = argv[1];
     int bin_offset = strtol(argv[2], 0, 16);
     printf("offset = 0x%x\n", bin_offset);
@@ -856,8 +874,13 @@ int main(int argc, const char *argv[])
     bin = (unsigned char*) malloc(file_size);
     readFileAll(BinFileName, bin, file_size);
 
+    vex_lift_init();
+
     vex_insns_group insns_group;
     bool err;
     err = vex_lift(&insns_group, &bin[bin_offset], start_addr, file_size - bin_offset);
+
+    vex_lift_finilize();
+
     return 0;
 }
