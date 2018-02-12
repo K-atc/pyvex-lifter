@@ -5,7 +5,7 @@ lifter: lifter.cpp lifter.py.inc
 	g++ -std=c++11 -o $@ $< -lpython2.7
 
 %.py.inc: %.py
-	(echo 'const char script[] = ""'; sed -e 's/\\/\\\\/g' -e 's/\"/\\\"/g' -e 's/^/\t\"/g' -e 's/$$/\\n\"/g' $<; echo ' "";') > $@
+	(echo 'const char script[] = ""'; sed -e 's/import [pach][a-z]*/\x23 import removed/g' -e 's/\\/\\\\/g' -e 's/\"/\\\"/g' -e 's/^/\t\"/g' -e 's/$$/\\n\"/g' $<; echo ' "";') > $@
 
 test: lifter
 	./lifter correct-argv1.bin 0x25 0x4000a5

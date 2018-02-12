@@ -198,6 +198,7 @@ typedef struct {
     vex_expr guard;
     int offsIP;
     vex_const dst;
+    std::string asmbytes;
     std::string disasm;
     vex_ir_endness endness = Iend_Invalid;
     vex_expr addr_expr;
@@ -224,6 +225,11 @@ std::string vex_tag_enum_to_str(vex_ir_ijk tag);
 std::string vex_tag_enum_to_str(vex_ir_endness tag);
 std::string vex_tag_enum_to_str(vex_tag_ico tag);
 std::string vex_tag_enum_to_str(vex_abst_iop tag);
+
+void print_vex_expr(vex_expr expr, char* prefix);
+void print_vex_insn(vex_insn insn);
+void print_vex_insns(vex_insns insns);
+void print_vex_insns_group(vex_insns_group &insns_group);
 
 constexpr unsigned int vex_itype(vex_tag_ist const &ist) {
     return ist * VEX_IST_BASE;
@@ -594,6 +600,7 @@ void print_vex_insn(vex_insn insn)
     printf("\ttmp = %d\n", insn.tmp);
     print_vex_insn_data(insn.data, (char *) "data.");
     if (insn.tag == Ist_IMark) {
+        // printf("\tasmbytes = '%s'\n", insn.asmbytes.c_str());
         printf("\tdisasm = %s\n", insn.disasm.c_str());
         printf("\taddr = 0x%x\n", insn.addr);
         printf("\tlen = %d\n", insn.len);
@@ -612,6 +619,15 @@ void print_vex_insns(vex_insns insns)
 {
     for (auto &insn : insns) {
         print_vex_insn(insn);
+    }
+}
+
+void print_vex_insns_group(vex_insns_group &insns_group)
+{
+    for(auto itr = insns_group.begin(); itr != insns_group.end(); ++itr) {
+        puts("");
+        printf("*** [address = 0x%lx] ***\n", itr->first);
+        print_vex_insns(itr->second);
     }
 }
 
@@ -690,7 +706,10 @@ bool vex_lift(vex_insns_group *insns_group, unsigned char *insns_bytes, unsigned
                     v = PyDict_GetItemString(item, "full");
                     if (v) insn.full = PyString_AsString(v);
                     //// Py_XDECREF(v);
-                    // std::cout << insn.full << std::endl; /* for debug */
+                    v = PyDict_GetItemString(item, "asm");
+                    if (v && PyBytes_Check(v)) insn.asmbytes = PyBytes_AsString(v);
+                    if (v && PyByteArray_Check(v)) insn.asmbytes = PyByteArray_AsString(v);
+                    if (v && PyString_Check(v)) insn.asmbytes = PyString_AsString(v);
                     v = PyDict_GetItemString(item, "disasm");
                     if (v) insn.disasm = PyString_AsString(v);
                     //// Py_XDECREF(v);
@@ -785,11 +804,6 @@ bool vex_lift(vex_insns_group *insns_group, unsigned char *insns_bytes, unsigned
             } else {
                 fprintf(stderr, "Passed pointer of PyObject was not a list or tuple!");
             }
-            for(auto itr = insns_group->begin(); itr != insns_group->end(); ++itr) {
-                puts("");
-                printf("*** [address = 0x%lx] ***\n", itr->first);
-                print_vex_insns(itr->second);
-            }
             Py_DECREF(ans);
         }
         Py_DECREF(pArgs);
@@ -803,7 +817,7 @@ bool vex_lift(vex_insns_group *insns_group, unsigned char *insns_bytes, unsigned
 
     Py_DECREF(main);
     // Py_DECREF(global);
-    Py_DECREF(func);
+    // Py_DECREF(func);
 
     return true;
 }
@@ -814,6 +828,14 @@ void vex_lift_init(void)
     if (!Py_IsInitialized()) {
         Py_Initialize();
     }
+
+    // Load required modules
+    PyRun_SimpleString(
+        "import pyvex\n"
+        "import archinfo\n"
+        "import capstone\n"
+        "import hexdump\n"
+        );
 }
 
 void vex_lift_finilize(void)
@@ -879,6 +901,7 @@ int main(int argc, const char *argv[])
     vex_insns_group insns_group;
     bool err;
     err = vex_lift(&insns_group, &bin[bin_offset], start_addr, file_size - bin_offset);
+    print_vex_insns_group(insns_group);
 
     vex_lift_finilize();
 

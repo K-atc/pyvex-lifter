@@ -1,7 +1,7 @@
 #!/usr/bin/python2
 import pyvex
 import archinfo
-from capstone import *
+import capstone
 import hexdump
 
 class UnhandledStmtError(Exception):
@@ -57,13 +57,14 @@ def parse_expr(expr, tyenv=None):
         ret['ty'] = expr.ty
     elif expr.tag in ["Iex_CCall"]:
         ret['retty'] = expr.retty
-        ret['cee'] = expr.cee
+        ret['cee'] = expr.cee.name
         ret['args'] = parse_expr_args(expr.args, tyenv=tyenv)
     else:
         raise UnhandledStmtError(expr)
     return ret
 
 def Lift(insn_bytes, START_ADDR):
+    insns = []
     try:
         count = len(insn_bytes)
 
@@ -71,7 +72,7 @@ def Lift(insn_bytes, START_ADDR):
         print("len(insn_bytes) = %#x" % len(insn_bytes))
         hexdump.hexdump(insn_bytes[:count])
 
-        md = Cs(CS_ARCH_X86, CS_MODE_64)
+        md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_64)
 
         ### lift per one insn
         # for i in md.disasm(insn_bytes, START_ADDR):
@@ -81,19 +82,21 @@ def Lift(insn_bytes, START_ADDR):
         #     irsb.pp()
         # return []
 
-        insns = []
         offset = 0
         while offset < count:
             ### print a instruction
             disasm_str = ""
             insn_address = 0
+            insn_asmbytes = bytearray()
             for insn in md.disasm(insn_bytes[offset:], START_ADDR + offset):
-                # print("0x%x:\t%s\t%s" %(insn.address, insn.mnemonic, insn.op_str))
+                print("Captone: 0x%x:\t%r\t%s\t%s " %(insn.address, insn.bytes, insn.mnemonic, insn.op_str))
                 disasm_str = "%s\t%s" %(insn.mnemonic, insn.op_str)
                 # irsb = pyvex.IRSB(bytes(insn.bytes), insn.address, archinfo.ArchAMD64(), max_bytes=insn.size)
                 insn_address = insn.address
+                insn_asmbytes = insn.bytes
                 break
-            assert(insn_address > 0)
+            if insn_address < 0:
+                raise Exception("failed to disassemble")
             if True:
                 irsb = pyvex.IRSB(insn_bytes[offset:], insn_address, archinfo.ArchAMD64())
 
@@ -139,6 +142,8 @@ def Lift(insn_bytes, START_ADDR):
                     elif stmt.tag == "Ist_IMark":
                         ret['addr'] = stmt.addr
                         ret['len'] = stmt.len
+                        ret['asm'] = bytes(insn_asmbytes)
+                        ret['asmlen'] = len(insn_asmbytes)
                         ret['disasm'] = disasm_str
                     elif stmt.tag == "Ist_AbiHint":
                         ret['base'] = parse_expr(stmt.base, tyenv=irsb.tyenv)
@@ -158,5 +163,5 @@ def Lift(insn_bytes, START_ADDR):
         import sys, os
         exc_type, exc_obj, exc_tb = sys.exc_info()
         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-        sys.stderr.write("[!] Exception: %s\n" % str((str(e), str(fname), exc_tb.tb_lineno)))
-        return []
+        sys.stderr.write("[!] Exception: %s\n" % str((str(e), fname, exc_tb.tb_lineno)))
+        return insns

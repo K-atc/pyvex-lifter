@@ -24,5 +24,5 @@ if __name__ == '__main__':
     for addr, insn_bytes in test_insns:
         insns = Lift(insn_bytes, addr)
         for x in insns:
-            print(x)
+            # print(x)
             pass
