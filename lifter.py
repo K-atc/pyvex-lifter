@@ -89,7 +89,7 @@ def Lift(insn_bytes, START_ADDR):
             insn_address = 0
             insn_asmbytes = bytearray()
             for insn in md.disasm(insn_bytes[offset:], START_ADDR + offset):
-                print("Captone: 0x%x:\t%r\t%s\t%s " %(insn.address, insn.bytes, insn.mnemonic, insn.op_str))
+                # print("Captone: 0x%x:\t%r\t%s\t%s " %(insn.address, insn.bytes, insn.mnemonic, insn.op_str))
                 disasm_str = "%s\t%s" %(insn.mnemonic, insn.op_str)
                 # irsb = pyvex.IRSB(bytes(insn.bytes), insn.address, archinfo.ArchAMD64(), max_bytes=insn.size)
                 insn_address = insn.address
@@ -142,7 +142,7 @@ def Lift(insn_bytes, START_ADDR):
                     elif stmt.tag == "Ist_IMark":
                         ret['addr'] = stmt.addr
                         ret['len'] = stmt.len
-                        ret['asm'] = bytes(insn_asmbytes)
+                        ret['asm'] = insn_asmbytes
                         ret['asmlen'] = len(insn_asmbytes)
                         ret['disasm'] = disasm_str
                     elif stmt.tag == "Ist_AbiHint":

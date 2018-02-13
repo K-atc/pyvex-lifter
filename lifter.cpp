@@ -184,6 +184,7 @@ typedef struct : vex_expr {
     vex_expr args[8];
     int nargs = 0;
     vex_ir_endness endness = Iend_Invalid;
+    std::string cee;
 } vex_data;
 
 typedef struct {
@@ -558,18 +559,25 @@ void print_vex_const(vex_const vconst, char* prefix)
 
 void print_vex_expr(vex_expr expr, char* prefix)
 {
-    if (expr.tag == Iex_Invalid) return;
     printf("\t%stag = %s\n", prefix, vex_tag_enum_to_str(expr.tag).c_str());
-    printf("\t%scon = 0x%x\n", prefix, expr.con);
-    printf("\t%stmp = %d\n", prefix, expr.tmp);
-    printf("\t%soffset = 0x%x\n", prefix, expr.offset);
+    if (expr.tag == Iex_Invalid) return;
+    if (expr.tag == Iex_Const)
+        printf("\t%scon = 0x%x\n", prefix, expr.con);
+    if (expr.tag == Iex_RdTmp)
+        printf("\t%stmp = %d\n", prefix, expr.tmp);
+    if (expr.tag == Iex_Get)
+        printf("\t%soffset = 0x%x\n", prefix, expr.offset);
     printf("\t%sresult_size = %d\n", prefix, expr.result_size);
-    printf("\t%sty = %s\n", prefix, vex_tag_enum_to_str(expr.ty).c_str());
+    if (expr.tag != Iex_RdTmp)
+        printf("\t%sty = %s\n", prefix, vex_tag_enum_to_str(expr.ty).c_str());
 }
 
 void print_vex_insn_data(vex_data data, char* prefix)
 {
     if (data.tag == Iex_Invalid && data.op == "Iop_Invalid") return;
+    if (data.tag == Iex_CCall) {
+        printf("\t%scee = %s\n", prefix, data.cee.c_str());
+    }
     print_vex_expr(static_cast<vex_expr> (data), (char *) prefix);
     if (data.tag == Iex_Load) {
         print_vex_expr(data.addr, (char *) "data.addr.");
@@ -636,13 +644,13 @@ void set_const(vex_const *insn, PyObject *obj)
     PyObject *v = nullptr;
     v = PyDict_GetItemString(obj, "tag");
     if (v) insn->tag = vex_tag_ico_str_to_enum(PyString_AsString(v));
-    //// Py_XDECREF(v);
+
     v = PyDict_GetItemString(obj, "size");
     if (v) insn->size = PyLong_AsUnsignedLong(v);
-    //// Py_XDECREF(v);
+
     v = PyDict_GetItemString(obj, "value");
     if (v) insn->value = PyLong_AsUnsignedLong(v);
-    //// Py_XDECREF(v);
+
 }
 
 void set_expr(vex_expr *insn, PyObject *obj)
@@ -650,19 +658,19 @@ void set_expr(vex_expr *insn, PyObject *obj)
     PyObject *v = nullptr;
     v = PyDict_GetItemString(obj, "tag");
     if (v) insn->tag = vex_tag_iex_str_to_enum(PyString_AsString(v));
-    //// Py_XDECREF(v);
+
     v = PyDict_GetItemString(obj, "tmp");
     if (v) insn->tmp = PyInt_AsLong(v);
-    //// Py_XDECREF(v);
+
     v = PyDict_GetItemString(obj, "con");
     if (v) insn->con = PyInt_AsLong(v);
-    //// Py_XDECREF(v);
+
     v = PyDict_GetItemString(obj, "offset");
     if (v) insn->offset = PyInt_AsLong(v);
-    //// Py_XDECREF(v);
+
     v = PyDict_GetItemString(obj, "result_size");
     if (v) insn->result_size = PyInt_AsLong(v);
-    //// Py_XDECREF(v);
+
 }
 
 bool vex_lift(vex_insns_group *insns_group, unsigned char *insns_bytes, unsigned long int start_addr, unsigned long int count)
@@ -703,78 +711,83 @@ bool vex_lift(vex_insns_group *insns_group, unsigned char *insns_bytes, unsigned
                     PyObject *v = nullptr;
                     PyObject *data = nullptr;
                     PyObject *args = nullptr;
+
                     v = PyDict_GetItemString(item, "full");
                     if (v) insn.full = PyString_AsString(v);
-                    //// Py_XDECREF(v);
+
                     v = PyDict_GetItemString(item, "asm");
                     if (v && PyBytes_Check(v)) insn.asmbytes = PyBytes_AsString(v);
                     if (v && PyByteArray_Check(v)) insn.asmbytes = PyByteArray_AsString(v);
                     if (v && PyString_Check(v)) insn.asmbytes = PyString_AsString(v);
+
                     v = PyDict_GetItemString(item, "disasm");
                     if (v) insn.disasm = PyString_AsString(v);
-                    //// Py_XDECREF(v);
+
                     v = PyDict_GetItemString(item, "tag");
                     if (v) insn.tag = vex_tag_ist_str_to_enum(PyString_AsString(v));
-                    //// Py_XDECREF(v);
+
                     v = PyDict_GetItemString(item, "tmp");
                     if (v) insn.tmp = PyInt_AsLong(v);
-                    //// Py_XDECREF(v);
+
                     v = PyDict_GetItemString(item, "offset");
                     if (v) insn.offset = PyInt_AsLong(v);
-                    //// Py_XDECREF(v);
+
                     v = PyDict_GetItemString(item, "addr");
                     if (v) insn.addr = PyInt_AsLong(v);
-                    //// Py_XDECREF(v);
+
                     v = PyDict_GetItemString(item, "len");
                     if (v) insn.len = PyInt_AsLong(v);
-                    //// Py_XDECREF(v);
+
                     v = PyDict_GetItemString(item, "jumpkind");
                     if (v) insn.jumpkind = vex_ijk_str_to_enum(PyString_AsString(v));
-                    //// Py_XDECREF(v);
+
                     v = PyDict_GetItemString(item, "dst");
                     if (v) set_const(&insn.dst, v);
-                    //// Py_XDECREF(v);
+
                     v = PyDict_GetItemString(item, "offsIP");
                     if (v) insn.offsIP = PyInt_AsLong(v);
-                    //// Py_XDECREF(v);
+
                     v = PyDict_GetItemString(item, "endness");
                     if (v) insn.endness = vex_ir_endness_str_to_enum(PyString_AsString(v));
-                    //// Py_XDECREF(v);
+
                     v = PyDict_GetItemString(item, "guard");
                     if (v) set_expr(&insn.guard, v);
-                    //// Py_XDECREF(v);
+
                     v = PyDict_GetItemString(item, "addr_expr");
                     if (v) set_expr(&insn.addr_expr, v);
-                    //// Py_XDECREF(v);
+
                     data = PyDict_GetItemString(item, "data");
                     if (data) {
                         v = PyDict_GetItemString(data, "tag");
                         if (v) insn.data.tag = vex_tag_iex_str_to_enum(PyString_AsString(v));
-                        //// Py_XDECREF(v);
+
                         v = PyDict_GetItemString(data, "addr");
                         if (v) set_expr(&insn.data.addr, v);
-                        //// Py_XDECREF(v);
+
                         v = PyDict_GetItemString(data, "ty");
                         if (v) insn.data.ty = vex_ir_ity_str_to_enum(PyString_AsString(v));
-                        //// Py_XDECREF(v);
+
                         v = PyDict_GetItemString(data, "endness");
                         if (v) insn.data.endness = vex_ir_endness_str_to_enum(PyString_AsString(v));
-                        //// Py_XDECREF(v);
+
+                        v = PyDict_GetItemString(data, "cee");
+                        if (v) insn.data.cee = PyString_AsString(v);
+
                         v = PyDict_GetItemString(data, "op");
                         if (v) insn.data.op = PyString_AsString(v);
-                        //// Py_XDECREF(v);
+
                         v = PyDict_GetItemString(data, "tmp");
                         if (v) insn.data.tmp = PyInt_AsLong(v);
-                        //// Py_XDECREF(v);
+
                         v = PyDict_GetItemString(data, "con");
                         if (v) insn.data.con = PyInt_AsLong(v);
-                        //// Py_XDECREF(v);
+
                         v = PyDict_GetItemString(data, "offset");
                         if (v) insn.data.offset = PyInt_AsLong(v);
-                        //// Py_XDECREF(v);
+
                         v = PyDict_GetItemString(data, "result_size");
                         if (v) insn.data.result_size = PyInt_AsLong(v);
-                        //// Py_XDECREF(v);
+
                         args = PyDict_GetItemString(data, "args");
                         if (args) {
                             insn.data.nargs = PyList_Size(args);
