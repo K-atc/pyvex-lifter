@@ -11,9 +11,10 @@
 
 #include "lifter.py.inc"
 
-#define VEX_IST_BASE 0x10000
-#define VEX_IEX_BASE 0x100
-#define VEX_IOP_BASE 0x1
+#define VEX_IST_BASE 0x1000000
+#define VEX_IEX_BASE 0x10000
+#define VEX_IOP_BASE 0x100
+#define VEX_IJK_BASE 0x1
 
 typedef enum {
     Ist_Invalid = 0,
@@ -121,7 +122,7 @@ typedef enum {
 } vex_abst_iop;
 
 typedef enum {
-    Ijk_Invalid,
+    Ijk_Invalid = 0,
     Ijk_Boring,         /* not interesting; just goto next */
     Ijk_Call,           /* guest is doing a call */
     Ijk_Ret,            /* guest is doing a return */
@@ -154,7 +155,7 @@ typedef enum {
 } vex_ir_ijk;
 
 typedef enum {
-    Iend_Invalid,
+    Iend_Invalid = 0,
     Iend_LE,
     Iend_BE
 } vex_ir_endness;
@@ -195,7 +196,7 @@ typedef struct {
     int tmp = 0;
     int addr = 0;
     int len = 0;
-    vex_ir_ijk jumpkind;
+    vex_ir_ijk jumpkind = Ijk_Invalid;
     vex_expr guard;
     int offsIP;
     vex_const dst;
@@ -244,19 +245,38 @@ constexpr unsigned int vex_itype(vex_tag_ist const &ist, vex_tag_iex const &iex,
     return vex_itype(ist, iex) + iop * VEX_IOP_BASE;
 }
 
+
+constexpr unsigned int vex_itype(vex_tag_ist const &ist, vex_ir_ijk const &ijk) {
+    return vex_itype(ist) + ijk * VEX_IJK_BASE;
+}
+
+constexpr unsigned int vex_itype(vex_tag_ist const &ist, vex_tag_iex const &iex, vex_ir_ijk const &ijk) {
+    return vex_itype(ist, iex) + ijk * VEX_IJK_BASE;
+}
+
 std::string vex_repr_itype(unsigned int type) {
+    // printf("type = 0x%x, ", type);
     unsigned int ist = type / VEX_IST_BASE;
     type -= ist * VEX_IST_BASE;
     unsigned int iex = type / VEX_IEX_BASE;
     type -= iex * VEX_IEX_BASE;
     unsigned int iop = type / VEX_IOP_BASE;
+    type -= iop * VEX_IOP_BASE;
+    unsigned int ijk = type / VEX_IJK_BASE;
+    // printf("ist = %u, iex = %u, iop = %u, ijk = %u\n", ist, iex, iop, ijk);
     std::ostringstream str;
-    str <<
-        vex_tag_enum_to_str((vex_tag_ist)(ist)) <<
-        "|" <<
-        vex_tag_enum_to_str((vex_tag_iex)(iex)) <<
-        "|" <<
-        vex_tag_enum_to_str((vex_abst_iop)(iop));
+    if (ist == 0) {
+        str << type;
+    }
+    else {
+        str << vex_tag_enum_to_str((vex_tag_ist)(ist));
+        if (iex > 0)
+            str << "|" << vex_tag_enum_to_str((vex_tag_iex)(iex));
+        if (iop > 0)
+            str << "|" << vex_tag_enum_to_str((vex_abst_iop)(iop));
+        if (ijk > 0)
+            str << "|" << vex_tag_enum_to_str((vex_ir_ijk)(ijk));
+    }
     return str.str();
 }
 
@@ -598,7 +618,10 @@ void print_vex_insn(vex_insn insn)
 {
     printf("%s\n", insn.full.c_str());
     // printf("\ttype = 0x%x\n", vex_itype(insn.tag, insn.data.tag, vex_iop(insn.data.op)));
-    printf("\ttype = %s\n", vex_repr_itype(vex_itype(insn.tag, insn.data.tag, vex_iop(insn.data.op))).c_str());
+    if (insn.jumpkind != Ijk_Invalid && insn.data.op == "Iop_Invalid")
+        printf("\ttype = %s\n", vex_repr_itype(vex_itype(insn.tag, insn.data.tag, insn.jumpkind)).c_str());
+    else
+        printf("\ttype = %s\n", vex_repr_itype(vex_itype(insn.tag, insn.data.tag, vex_iop(insn.data.op))).c_str());
     printf("\ttag = %s\n", vex_tag_enum_to_str(insn.tag).c_str());
     printf("\toffset = %d\n", insn.offset);
     if (insn.tag == Ist_Store) {
@@ -613,7 +636,7 @@ void print_vex_insn(vex_insn insn)
         printf("\taddr = 0x%x\n", insn.addr);
         printf("\tlen = %d\n", insn.len);
     }
-    if (insn.tag == Ist_Exit || insn.tag == Ist_Jump) {
+    if (insn.jumpkind != Ijk_Invalid) {
         printf("\tjumpkind = %s\n", vex_tag_enum_to_str(insn.jumpkind).c_str());
     }
     if (insn.tag == Ist_Exit) {

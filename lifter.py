@@ -29,7 +29,8 @@ def parse_expr_args(args, tyenv=None):
         if x.tag in ["Iex_RdTmp"]:
             ret[i]['tmp'] = x.tmp
         elif x.tag in ["Iex_Const"]:
-            ret[i]['con'] = int(str(x.con), 16)
+            ret[i]['con'] = x.con.value
+            ret[i]['result_size'] = x.con.size
         else:
             raise UnhandledStmtError(expr)
     return ret
@@ -45,7 +46,8 @@ def parse_expr(expr, tyenv=None):
         ret['offset'] = expr.offset
         ret['ty'] = expr.ty
     elif expr.tag in ["Iex_Const"]:
-        ret['con'] = int(str(expr.con), 16)
+        ret['con'] = expr.con.value
+        ret['result_size'] = expr.con.size
     elif expr.tag in ["Iex_RdTmp"]:
         ret['tmp'] = expr.tmp
     elif expr.tag in ["Iex_Binop", "Iex_Unop"]:
@@ -106,12 +108,13 @@ def Lift(insn_bytes, START_ADDR):
                 ### pretty print a basic block
                 irsb.pp()
 
-                ### fetch block jumpkind
+                ### fetch block jump
                 block_jump_insn = {}
                 if irsb.jumpkind:
-                    block_jump_insn['full'] = irsb.jumpkind.split('_', 1)[1]
+                    block_jump_insn['full'] = "Block Edge: " + irsb.jumpkind.split('_', 1)[1]
                     block_jump_insn['tag'] = "Ist_Jump"
                     block_jump_insn['jumpkind'] = irsb.jumpkind
+                    block_jump_insn['data'] = parse_expr(irsb.next)
 
                 ### interpret statements
                 for stmt in irsb.statements:
